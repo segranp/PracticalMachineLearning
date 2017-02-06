@@ -1,0 +1,168 @@
+---
+output: 
+  html_document: 
+    keep_md: yes
+---
+##Practical Machine Learning
+##Week 4 
+##Prediction Assignment Write-up
+#####by Segran Pillay
+
+###Summary
+
+Large amounts personal activity data are collected inexpensively everyday from devices such as Jawbone Up, Nike FuelBand, and Fitbit. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, I utilized data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. Each were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+Random Forest and Decision Tree machine learning algorithms, respectively, were applied to 20 test cases available in the [test data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv).
+
+Key finding was that Random Forest provided a more accurate model fit compared to Decision Tree.
+
+
+Note: 
+- More information is available from the website [here](http://groupware.les.inf.puc-rio.br/har) - (see the section on the Weight Lifting Exercise Dataset).
+- The training data for this project are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+
+
+
+###A. Load the data into R
+
+```{r}
+echo = TRUE
+#Training data url:
+train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#Testing data url:
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+
+# Download Training data:
+if (!file.exists("train_data.csv")){
+  download.file(train_url, destfile="train_data.csv")
+}
+# Download Testing data:
+if (!file.exists("test_data.csv")){
+download.file(test_url, destfile="test_data.csv")
+}
+
+# Read Training data and replace missing values & excel division error strings #DIV/0! with 'NA'
+train_data <- read.csv("train_data.csv", na.strings=c("NA","#DIV/0!",""), header=TRUE)
+
+# Read Testing data and replace missing values & excel division error strings #DIV/0! with 'NA'
+test_data <- read.csv("test_data.csv", na.strings=c("NA","#DIV/0!",""), header=TRUE)
+
+# Summary of Training data classe variable
+summary(train_data$classe)
+```
+
+
+###B. Data Partitioning for cross validation
+
+Training data is split into two data sets by **classe** variable. 
+1. Set for training the model 
+2. Set for testing the performance the model
+
+Data Split -  60% for training and 40% for testing
+
+```{r message=FALSE, warning=FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+inTrain <- createDataPartition(y=train_data$classe, p = 0.60, list=FALSE)
+training <- train_data[inTrain,]
+testing <- train_data[-inTrain,]
+
+dim(training); dim(testing)
+```
+
+###C. Data Processing
+####1. Removing metadata - first seven variables omitted to improve model performance
+
+```{r message=FALSE, warning=FALSE}
+#NearZeroVariance variables removed
+training <- training[,-c(1:7)]
+nzv <- nearZeroVar(training, saveMetrics=TRUE)
+training <- training[, nzv$nzv==FALSE]
+```
+
+####2. Removing "NA" from training dataset
+```{r}
+training_clean <- training
+for(i in 1:length(training)) {
+  if( sum( is.na( training[, i] ) ) /nrow(training) >= .6) {
+    for(j in 1:length(training_clean)) {
+      if( length( grep(names(training[i]), names(training_clean)[j]) ) == 1)  {
+        training_clean <- training_clean[ , -j]
+      }   
+    } 
+  }
+}
+training <- training_clean
+```
+
+####3. Transforming the Test dataset
+
+```{r}
+columns <- colnames(training)
+columns2 <- colnames(training[, -53])
+test_data <- test_data[columns2]
+dim(test_data)
+```
+
+###D. Cross-Validation
+####1. Leveraging **Decision Tree** for Predication
+```{r}
+set.seed(1234)
+modFit <- rpart(classe ~ ., data=training, method="class")
+prediction <- predict(modFit, testing, type="class")
+cm <- confusionMatrix(prediction, testing$classe)
+print(cm)
+```
+
+**Level of Accuracy:**
+```{r}
+overall.accuracy <- round(cm$overall['Accuracy'] * 100, 2)
+samplerror <- round(1 - cm$overall['Accuracy'],2)
+fancyRpartPlot(modFit)
+```
+
+**Findings:**
+
+ - Obtained 75.35% accuracy on the testing data partitioned from the training
+ data
+ - The expected out of sample error is roughly 0.25%.
+ 
+ 
+ 
+
+####2. Leveraging **Random Forest** for predication
+```{r}
+set.seed(1234)
+modFit1 <- randomForest(classe ~ ., data=training)
+prediction1 <- predict(modFit1, testing)
+cm1 <- confusionMatrix(prediction1, testing$classe)
+print(cm1)
+```
+
+**Level of Accuracy:**
+```{r}
+overall.accuracy <- round(cm1$overall['Accuracy'] * 100, 2)
+samplerror1 <- round(1 - cm1$overall['Accuracy'],2)
+plot(modFit1)
+```
+
+**Findings:**
+ - Obtained 99.34% accuracy 
+ - The expected out of sample error is roughly 0.01%.
+ 
+ 
+###D. Conclusion
+ - Random Forest provides a better model fit compared to Decision Tree.
+ - **Course Project Prediction Quiz Portion:**
+ 
+ 
+```{r}
+ final_prediction <- predict(modFit1, test_data, type="class")
+print(final_prediction)
+```
